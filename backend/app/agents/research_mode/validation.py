@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any
 
-from backend.app.models.evidence import PaperRecord, PRISMATracker, ValidationReport
+from backend.app.models.evidence import PRISMATracker, ValidationReport
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ METRIC_KEYWORD_PATTERN = re.compile(
 )
 
 
-def extract_numerical_claims(text: str) -> List[str]:
+def extract_numerical_claims(text: str) -> list[str]:
     """Extract individual sentences containing quantitative metrics or numerical performance claims."""
     if not text:
         return []
@@ -38,10 +38,10 @@ def extract_numerical_claims(text: str) -> List[str]:
 
 
 def validate_claim_chains(
-    review_claims: List[Dict[str, Any]],
-    evidence_records: List[Dict[str, Any]],
-    paper_records: List[Dict[str, Any]],
-) -> Tuple[int, int, List[str], List[str]]:
+    review_claims: list[dict[str, Any]],
+    evidence_records: list[dict[str, Any]],
+    paper_records: list[dict[str, Any]],
+) -> tuple[int, int, list[str], list[str]]:
     """Validate structured claim_id -> evidence_id -> paper_id -> source_url/doi chains.
 
     Every rendered ReviewClaim must carry at least one supporting_evidence_id
@@ -60,8 +60,8 @@ def validate_claim_chains(
     }
 
     total = len(review_claims)
-    unresolved: List[str] = []
-    details: List[str] = []
+    unresolved: list[str] = []
+    details: list[str] = []
 
     for c in review_claims:
         cid = str(c.get("claim_id") or "<unnamed claim>")
@@ -99,8 +99,8 @@ def validate_claim_chains(
 
 def validate_citations_in_text(
     text: str,
-    paper_records: List[Dict[str, Any]]
-) -> Tuple[int, int, List[str], List[str]]:
+    paper_records: list[dict[str, Any]]
+) -> tuple[int, int, list[str], list[str]]:
     """Resolve all inline author-year citations against the PaperRecord store.
 
     A citation counts as verified when its (first-author surname, year) matches a
@@ -111,7 +111,7 @@ def validate_citations_in_text(
         return 0, 0, [], []
 
     # Build lookup index of (normalized_author, year) from paper records
-    known_papers: Set[Tuple[str, str]] = set()
+    known_papers: set[tuple[str, str]] = set()
     for p in paper_records:
         year = str(p.get("year", "n.d."))
         authors = p.get("authors") or []
@@ -127,7 +127,7 @@ def validate_citations_in_text(
     matches = CITATION_PATTERN.findall(text)
     total_citations = len(matches)
     verified = 0
-    unverified: List[str] = []
+    unverified: list[str] = []
 
     # Shortest surname in the corpus: a citation surname shorter than this cannot
     # match any known record, so it must never be accepted on a year match alone.
@@ -153,7 +153,7 @@ def validate_citations_in_text(
             unverified.append(f"({author_str}, {year})")
 
     # Check for orphan references (papers never cited)
-    orphan_references: List[str] = []
+    orphan_references: list[str] = []
     text_lower = text.lower()
     for p in paper_records:
         authors = p.get("authors") or []
@@ -167,7 +167,7 @@ def validate_citations_in_text(
     return total_citations, verified, unverified, orphan_references
 
 
-async def citation_validator_node(state: Dict[str, Any]) -> Dict[str, Any]:
+async def citation_validator_node(state: dict[str, Any]) -> dict[str, Any]:
     """Validator 1: Resolves inline citations, orphan references, and claim chains.
 
     Beyond regex-matching rendered author-year text, resolves every structured
@@ -186,7 +186,7 @@ async def citation_validator_node(state: Dict[str, Any]) -> Dict[str, Any]:
         str(state.get("introduction") or "")
     ])
 
-    total, verified, unverified, orphans = validate_citations_in_text(all_prose, papers)
+    total, verified, unverified, _orphans = validate_citations_in_text(all_prose, papers)
 
     review_claims = state.get("review_claims") or []
     total_rc, resolved_rc, unresolved_claims, _details = validate_claim_chains(
@@ -243,7 +243,7 @@ def _mentions_metric(sentence_lower: str, metric_name: str) -> bool:
     return bool(tokens) and all(t in sentence_lower for t in tokens)
 
 
-async def claim_validator_node(state: Dict[str, Any]) -> Dict[str, Any]:
+async def claim_validator_node(state: dict[str, Any]) -> dict[str, Any]:
     """Validator 2: Matches numbers in quantitative sentences and structured claims to EvidenceRecord values.
 
     Numeric match only. A grounded claim keeps its status (its id is reported in
@@ -254,8 +254,8 @@ async def claim_validator_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     # Metric-scoped expectations: a number is only grounded when the sentence
     # names the metric AND the number matches that metric's reported/baseline value.
-    metric_expectations: List[Tuple[str, float, str]] = []
-    evidence_by_id: Dict[str, Dict[str, Any]] = {}
+    metric_expectations: list[tuple[str, float, str]] = []
+    evidence_by_id: dict[str, dict[str, Any]] = {}
     for e in ev_dicts:
         eid = e.get("evidence_id")
         if eid:
@@ -300,7 +300,7 @@ async def claim_validator_node(state: Dict[str, Any]) -> Dict[str, Any]:
     # Structured quantitative ReviewClaims are grounded through their
     # supporting_evidence_ids, not through free-text sentence matching.
     review_claims = state.get("review_claims") or []
-    grounded_quant_ids: List[str] = []
+    grounded_quant_ids: list[str] = []
     adjudicated = []
     for c in review_claims:
         c = dict(c)
@@ -348,7 +348,7 @@ async def claim_validator_node(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def integrity_auditor_node(state: Dict[str, Any]) -> Dict[str, Any]:
+async def integrity_auditor_node(state: dict[str, Any]) -> dict[str, Any]:
     """Validator 3: Aggregates the resolution and numeric-match gates and checks PRISMA invariants.
 
     passed_all_gates means every gate passed. It is not a finding that the cited
@@ -380,9 +380,9 @@ async def integrity_auditor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         state.get("evidence_records") or [],
         papers,
     )
-    chain_unresolved = sorted(set(chain_unresolved) | set(str(c) for c in unresolved_claims))
+    chain_unresolved = sorted({*chain_unresolved, *(str(c) for c in unresolved_claims)})
 
-    flags: List[str] = []
+    flags: list[str] = []
     if prisma_errors:
         flags.extend(prisma_errors)
     if unverified_cites:
